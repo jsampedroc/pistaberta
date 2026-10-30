@@ -24,5 +24,14 @@ Plataforma libre de reserva de instalacións deportivas municipais (candidatura 
 - Cada PR nombra su origen (issue, D-xxx, invariante). Decisiones de dominio ACEPTADAS se apuntan en `docs/decisiones.md` en el mismo PR.
 - Dominio nuevo (multi-tenant, reservas): **spec (`/spec`) aprobada primero**, después código.
 
+## Multi-tenant (D-003..D-006, `docs/SDD-multi-tenant.md`)
+- Tenant = concello. Aislamiento por `tenant_id` + filtro aplicativo + RLS de Postgres. **Los dos son obligatorios**: ninguna capa sustituye a la otra.
+- Toda tabla de datos nueva: `tenant_id uuid not null`, `ENABLE` + `FORCE ROW LEVEL SECURITY` y policy con `app_tenant_id()`, índice que empiece por `tenant_id`, unicidades y FKs con `tenant_id`. `TenantCatalogGuardTest` falla si falta.
+- **Todo acceso a datos va dentro de una transacción** (`@Transactional`): el tenant se fija con `set_config(..., true)` al empezar la transacción (`TenantAwareTransactionManager`). Fuera de transacción no hay tenant y la BD devuelve 0 filas (fail-closed). Prohibido el GUC de sesión.
+- El acceso aplicativo pasa por `TenantScopedJdbc` (filtro obligatorio; sin tenant lanza `TenantNotSetException`). Async e hilos virtuales con acceso a datos: fuera hasta su spec.
+- La app se conecta como `pistaberta_app` (sin superuser ni BYPASSRLS); Flyway migra con el owner (`DB_MIGRATION_USER`). Nunca conectar la app como owner.
+- Resolver de tenant por header solo en perfiles `dev`/`test`; prod no tiene resolver hasta la spec de auth. Semilla (`db/seed`) solo dev/test; la tabla de prueba (`db/test`) solo test.
+- Mutaciones de aislamiento (una a una, `mvn clean verify`): R1 policy RLS → `TenantRowLevelSecurityTest`; R2 filtro de `TenantScopedJdbc` → `TenantScopedJdbcTest`; R3 `set_config(..., false)` → `TenantPoolIsolationTest`; R4 `NO FORCE` → `TenantCatalogGuardTest`; R5 semilla en `db/migration` → `DefaultProfileTest`.
+
 ## Sesiones
 - Una sesión con escritura por repo; worktree por sesión. Todo prompt trae SESIÓN + PRECONDICIONES; si falla una, parar y reportar.

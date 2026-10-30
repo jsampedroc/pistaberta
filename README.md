@@ -37,5 +37,19 @@ mvn -B verify                           # compila y ejecuta tests (usa Testconta
 java -jar pistaberta-infrastructure/target/pistaberta-infrastructure-0.1.0-SNAPSHOT.jar
 ```
 
-Configuración por variables de entorno: `DB_URL`, `DB_USER`, `DB_PASSWORD`
-(por defecto apuntan al `docker-compose.yml`). Flyway aplica las migraciones al arrancar.
+Configuración por variables de entorno (por defecto apuntan al `docker-compose.yml`):
+
+| Variable | Uso | Defecto |
+|---|---|---|
+| `DB_URL` | JDBC de la BD | `jdbc:postgresql://localhost:5432/pistaberta` |
+| `DB_USER` / `DB_PASSWORD` | rol de la app `pistaberta_app` (sujeto a RLS); su contraseña también se usa al crearlo en V2 | `pistaberta_app` / `pistaberta_app` |
+| `DB_MIGRATION_USER` / `DB_MIGRATION_PASSWORD` | owner con el que Flyway migra (necesita `CREATEROLE` para V2) | `pistaberta` / `pistaberta` |
+
+Flyway aplica las migraciones al arrancar. Para desarrollo con los concellos de ejemplo
+(A Estrada, Lalín) y el resolver por header `X-Tenant-Id`, arranca con el perfil `dev`
+(`--spring.profiles.active=dev`). Sin perfil, la app arranca como en producción: sin semilla y sin resolver de tenant.
+
+## Multi-tenant
+
+Cada concello es un tenant con datos aislados (columna `tenant_id`, filtro aplicativo y Row Level Security).
+Ver `docs/SDD-multi-tenant.md` y `docs/decisiones.md`.
