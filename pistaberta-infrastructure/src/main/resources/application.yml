@@ -1,10 +1,19 @@
 spring:
   application:
     name: pistaberta
+  # La app se conecta con el rol no privilegiado pistaberta_app (sujeto a RLS).
+  # Las contraseñas NO tienen valor por defecto: sin DB_PASSWORD / DB_MIGRATION_PASSWORD la app no arranca.
+  # Los valores de desarrollo local viven en application-dev.yml.
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/pistaberta}
-    username: ${DB_USER:pistaberta}
-    password: ${DB_PASSWORD:pistaberta}
+    username: ${DB_USER:pistaberta_app}
+    password: ${DB_PASSWORD}
+  # Flyway migra con el owner/migrador, nunca con el rol de la app.
   flyway:
     enabled: true
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/pistaberta}
+    user: ${DB_MIGRATION_USER:pistaberta}
+    password: ${DB_MIGRATION_PASSWORD}
     locations: classpath:db/migration
+    placeholders:
+      app_db_password: ${DB_PASSWORD}

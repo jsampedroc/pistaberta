@@ -29,7 +29,7 @@ y se verifica con tests de integración que fallan si se quita cada capa.
 | C3 | **R2 · Filtro aplicativo:** en una conexión que bypassa RLS (superuser), el repositorio de la app solo devuelve filas de A. | D-003 |
 | C4 | Fail-closed: sin tenant en contexto → 0 filas en BD y excepción en el código. Acceso fuera de transacción → 0 filas. | D-003, Q7 |
 | C5 | **R3 · Pool:** el tenant de una transacción no se filtra a la siguiente transacción de la misma conexión física. | D-003 |
-| C6 | **R4 · Guard de catálogo:** toda tabla con columna `tenant_id` tiene RLS enabled, FORCE y ≥1 policy. | D-003 |
+| C6 | **R4 · Guard de catálogo:** toda tabla de `public` es un catálogo global conocido (allowlist) o tiene `tenant_id` con RLS enabled, FORCE y ≥1 policy. | D-003 |
 | C7 | Header `X-Tenant-Id` (slug) resuelto vía puerto; falta/inválido → 400; concello desconocido → 404; el contexto se limpia al terminar la request. | D-005 |
 | C8 | **R5 · Semilla:** `tenant` vacía con el perfil por defecto; 2 concellos solo en perfiles dev/test. | D-005 |
 | C9 | `domain` y `application` siguen sin Spring ni JPA; `maven-enforcer` pasa. | CLAUDE.md |
@@ -76,7 +76,7 @@ y se verifica con tests de integración que fallan si se quita cada capa.
 - **`V2__tenant_isolation.sql` (prod, `db/migration`):**
   - `tenant(id uuid pk, slug text not null unique, codigo_ine char(5) not null unique, nome text not null)`. Catálogo global, **sin RLS**, `SELECT` para `pistaberta_app`. Sin columna `activo`.
   - `app_tenant_id()`: `nullif(current_setting('app.tenant_id', true), '')::uuid`, `STABLE`.
-  - Rol `pistaberta_app`: `DO $$ ... IF NOT EXISTS ... CREATE ROLE ... LOGIN NOSUPERUSER NOBYPASSRLS ...`, contraseña por placeholder de Flyway (`DB_PASSWORD`), `GRANT` de uso y de DML sobre tablas actuales y futuras (`ALTER DEFAULT PRIVILEGES`).
+  - Rol `pistaberta_app`: `DO $$ ... IF NOT EXISTS ... CREATE ROLE ... LOGIN NOSUPERUSER NOBYPASSRLS ...`, contraseña por placeholder de Flyway (`DB_PASSWORD`), `GRANT` de uso sobre el esquema y `SELECT` sobre `tenant`. **Revisión adversarial (PR #3):** sin `ALTER DEFAULT PRIVILEGES`; cada tabla futura concede su DML de forma explícita. V2 falla si el rol existe con SUPERUSER o BYPASSRLS.
 - **Solo test (`db/test/R__tenant_probe.sql`, repetible e idempotente):** `tenant_probe(id uuid pk, tenant_id uuid not null references tenant(id), etiqueta text not null)`,
   índice `(tenant_id)`, `ENABLE` + `FORCE ROW LEVEL SECURITY` + policy. Sin lógica de reservas.
 - **Semilla (`db/seed/R__concellos.sql`, solo dev/test, `ON CONFLICT DO NOTHING`):**
@@ -143,6 +143,7 @@ Tras cada mutación se confirma que el build cae **tras `clean`**; si no cae, la
 - **R-2 · Header falsificable:** sin auth, cualquier cliente puede declarar cualquier concello. Por eso el resolver por header solo existe en dev/test y prod no tiene resolver (todas las requests a `/api/**` fallan cerradas) hasta la spec de auth.
 - **R-3 · Hilos:** el tenant va en el hilo de la request; async y virtual threads quedan fuera y no deben usarse con acceso a datos hasta su spec.
 - **R-4 · Probe solo en test:** prod no tendrá ninguna tabla con RLS hasta el dominio de reservas; el guard C6 vigila que las futuras la lleven.
+- **R-6 · RLS no defiende de inyección SQL:** el rol de la app puede fijar el GUC por su cuenta; la capa RLS protege frente a filtros olvidados, no frente a SQL concatenado. Todo SQL parametrizado (hallazgo F6 de la revisión adversarial).
 - **R-5 · Cambio de semántica de variables:** `DB_USER`/`DB_PASSWORD` pasan a ser la app (`pistaberta_app`); el migrador usa variables nuevas (nombres en T1). Afecta a `docker-compose.yml`, README y CI.
 
 ## 8. PLAN DE EJECUCIÓN
