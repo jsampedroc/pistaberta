@@ -1,3 +1,9 @@
+# Solo desarrollo local (docker-compose.yml): credenciales de ejemplo, semilla de concellos y resolver por header.
 spring:
+  datasource:
+    password: ${DB_PASSWORD:pistaberta_app}
   flyway:
+    password: ${DB_MIGRATION_PASSWORD:pistaberta}
     locations: classpath:db/migration,classpath:db/seed
+    placeholders:
+      app_db_password: ${DB_PASSWORD:pistaberta_app}

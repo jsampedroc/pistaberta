@@ -10,6 +10,15 @@ BEGIN
 END
 $$;
 
+-- Un rol pre-aprovisionado por ops puede traer SUPERUSER/BYPASSRLS: saltaría RLS sin que nada fallara.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pistaberta_app' AND (rolsuper OR rolbypassrls)) THEN
+        RAISE EXCEPTION 'El rol pistaberta_app no puede ser SUPERUSER ni BYPASSRLS: saltaría RLS (D-003)';
+    END IF;
+END
+$$;
+
 CREATE TABLE tenant (
     id         uuid     PRIMARY KEY,
     slug       text     NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
@@ -26,6 +35,5 @@ GRANT USAGE ON SCHEMA public TO pistaberta_app;
 GRANT SELECT ON tenant TO pistaberta_app;
 GRANT EXECUTE ON FUNCTION app_tenant_id() TO pistaberta_app;
 
--- Tablas futuras creadas por el migrador: DML para la app (cada tabla con tenant_id lleva además RLS).
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pistaberta_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO pistaberta_app;
+-- Sin ALTER DEFAULT PRIVILEGES: cada tabla nueva concede DML a la app de forma explícita en su migración,
+-- para que una tabla sin RLS no quede escribible por defecto (el guard de catálogo revisa todas las tablas).

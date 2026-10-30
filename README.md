@@ -34,16 +34,16 @@ Requisitos: JDK 21, Maven 3.9+, Docker.
 ```bash
 docker compose up -d db                 # Postgres 16 + PostGIS en localhost:5432
 mvn -B verify                           # compila y ejecuta tests (usa Testcontainers, necesita Docker)
-java -jar pistaberta-infrastructure/target/pistaberta-infrastructure-0.1.0-SNAPSHOT.jar
+java -jar pistaberta-infrastructure/target/pistaberta-infrastructure-0.1.0-SNAPSHOT.jar --spring.profiles.active=dev
 ```
 
-Configuración por variables de entorno (por defecto apuntan al `docker-compose.yml`):
+Configuración por variables de entorno. Las contraseñas **no tienen valor por defecto**: sin `DB_PASSWORD` y `DB_MIGRATION_PASSWORD` la app no arranca. El perfil `dev` trae los valores de `docker-compose.yml`:
 
 | Variable | Uso | Defecto |
 |---|---|---|
 | `DB_URL` | JDBC de la BD | `jdbc:postgresql://localhost:5432/pistaberta` |
-| `DB_USER` / `DB_PASSWORD` | rol de la app `pistaberta_app` (sujeto a RLS); su contraseña también se usa al crearlo en V2 | `pistaberta_app` / `pistaberta_app` |
-| `DB_MIGRATION_USER` / `DB_MIGRATION_PASSWORD` | owner con el que Flyway migra (necesita `CREATEROLE` para V2) | `pistaberta` / `pistaberta` |
+| `DB_USER` / `DB_PASSWORD` | rol de la app `pistaberta_app` (sujeto a RLS); su contraseña también se usa al crearlo en V2 | `pistaberta_app` / (obligatoria; dev: `pistaberta_app`) |
+| `DB_MIGRATION_USER` / `DB_MIGRATION_PASSWORD` | owner con el que Flyway migra (necesita `CREATEROLE` para V2) | `pistaberta` / (obligatoria; dev: `pistaberta`) |
 
 Flyway aplica las migraciones al arrancar. Para desarrollo con los concellos de ejemplo
 (A Estrada, Lalín) y el resolver por header `X-Tenant-Id`, arranca con el perfil `dev`

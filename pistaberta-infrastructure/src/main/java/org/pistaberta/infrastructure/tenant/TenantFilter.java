@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Puebla el tenant de /api/** y lo limpia al terminar. 400 si falta o es inválido, 404 si el concello no existe,
+ * Puebla el tenant y lo limpia al terminar. Cubre TODAS las requests (deny by default): no decide por prefijo de ruta,
+ * porque el filtro y Spring MVC interpretan distinto la URI (p.ej. /api;x=1/... enrutaba a /api/... sin pasar por aquí). 400 si falta o es inválido, 404 si el concello no existe,
  * 401 si no hay resolver configurado (prod hasta la spec de auth: falla cerrado).
  */
 @Component
@@ -30,11 +31,6 @@ public class TenantFilter extends OncePerRequestFilter {
         this.resolver = resolver;
         this.catalog = catalog;
         this.context = context;
-    }
-
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith("/api/");
     }
 
     @Override

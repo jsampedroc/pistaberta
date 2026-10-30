@@ -64,21 +64,51 @@ class TenantScopedJdbcTest {
     @Test
     void withoutTenantAccessFailsClosed() {
         assertThatThrownBy(() -> jdbc.query(SELECT_ALL, Map.of(), TENANT_OF_ROW)).isInstanceOf(TenantNotSetException.class);
-        assertThatThrownBy(() -> jdbc.update("delete from tenant_probe where tenant_id = :tenantId", Map.of()))
+        assertThatThrownBy(() -> jdbc.insert("tenant_probe", Map.of("etiqueta", "x"))).isInstanceOf(TenantNotSetException.class);
+        assertThatThrownBy(() -> jdbc.update("tenant_probe", Map.of("etiqueta", "x"), "true", Map.of()))
                 .isInstanceOf(TenantNotSetException.class);
+        assertThatThrownBy(() -> jdbc.delete("tenant_probe", "true", Map.of())).isInstanceOf(TenantNotSetException.class);
+    }
+
+    /** F2: una escritura sin WHERE propio no puede tocar filas de otro tenant (sobre conexión sin RLS). */
+    @Test
+    void updateAndDeleteAreScopedToTheCurrentTenant() throws SQLException {
+        context.set(new TenantId(A));
+        assertThat(jdbc.update("tenant_probe", Map.of("etiqueta", "pwn"), "true", Map.of())).isEqualTo(2);
+        assertThat(rowsOf(TestPostgres.LALIN, "etiqueta <> 'pwn'")).as("filas de B intactas").isEqualTo(2);
+        assertThat(jdbc.delete("tenant_probe", "true", Map.of())).isEqualTo(2);
+        assertThat(rowsOf(TestPostgres.LALIN, "true")).as("filas de B intactas").isEqualTo(2);
     }
 
     @Test
-    void writeWithoutTenantPlaceholderIsRejected() {
+    void insertAssignsTheCurrentTenant() throws SQLException {
         context.set(new TenantId(A));
-        assertThatThrownBy(() -> jdbc.update("delete from tenant_probe", Map.of()))
+        assertThat(jdbc.insert("tenant_probe", Map.of("etiqueta", "nuevo"))).isEqualTo(1);
+        assertThat(rowsOf(A, "etiqueta = 'nuevo'")).isEqualTo(1);
+    }
+
+    @Test
+    void tenantColumnCannotBeChosenOrReassigned() {
+        context.set(new TenantId(A));
+        assertThatThrownBy(() -> jdbc.insert("tenant_probe", Map.of("tenant_id", TestPostgres.LALIN, "etiqueta", "x")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> jdbc.update("tenant_probe", Map.of("tenant_id", TestPostgres.LALIN), "true", Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void updateIsScopedToTheCurrentTenant() {
+    void invalidIdentifiersAndMissingWhereAreRejected() {
         context.set(new TenantId(A));
-        int updated = jdbc.update("update tenant_probe set etiqueta = 'x' where tenant_id = :tenantId", Map.of());
-        assertThat(updated).isEqualTo(2);
+        assertThatThrownBy(() -> jdbc.delete("tenant_probe; drop table tenant", "true", Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> jdbc.update("tenant_probe", Map.of("etiqueta; --", "x"), "true", Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> jdbc.delete("tenant_probe", " ", Map.of())).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static long rowsOf(UUID tenant, String condition) throws SQLException {
+        try (var c = TestPostgres.superuser(TestPostgres.SHARED)) {
+            return TestPostgres.count(c, "select count(*) from tenant_probe where tenant_id = '" + tenant + "' and " + condition);
+        }
     }
 }

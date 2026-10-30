@@ -50,6 +50,18 @@ class TenantResolutionWebTest {
         mvc.perform(get("/api/test/tenant").header("X-Tenant-Id", "A Estrada;--")).andExpect(status().isBadRequest());
     }
 
+    /** F1: variantes de URI que Spring MVC enruta a /api/** no pueden saltarse el filtro. */
+    @Test
+    void pathParameterVariantsCannotBypassTheFilter() throws Exception {
+        mvc.perform(get("/api;x=1/test/tenant")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/test;x=1/tenant")).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void everyPathNeedsATenant() throws Exception {
+        mvc.perform(get("/anything-else")).andExpect(status().isBadRequest());
+    }
+
     @Test
     void unknownTenantIsNotFound() throws Exception {
         mvc.perform(get("/api/test/tenant").header("X-Tenant-Id", "non-existent")).andExpect(status().isNotFound());
