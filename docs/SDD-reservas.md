@@ -1,7 +1,7 @@
 # SDD — Reservas: invariante de no-solapamiento
 
-Estado: **PROPUESTA PARA VISTO DE PE** · sin código ni migraciones en este PR · §8 Plan pendiente del gate (§9).
-Normativo: `CLAUDE.md`, `docs/SDD-multi-tenant.md`, `docs/decisiones.md` (D-003..D-006 aceptadas; D-007..D-009 **PROPUESTAS** aquí).
+Estado: **APROBADA por Pe (gate resuelto el 2026-10-30)** · §8 Plan completo · sin código ni migraciones en este PR; la implementación (`feat/reservas`) empieza tras el visto de Pe al PR #5.
+Normativo: `CLAUDE.md`, `docs/SDD-multi-tenant.md`, `docs/decisiones.md` (D-003..D-009 aceptadas).
 
 ## 0. Meta
 - **Proyecto:** PistaAberta (I Certame GOBTEC) · repo `jsampedroc/pistaberta`
@@ -162,7 +162,8 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 | RV2 BD | `ReservaExclusionConstraintTest`: dos solapadas insertadas por SQL saltándose el dominio → 2ª `23P01` | quitar `reserva_sen_solape` de `V3` | RV2 **y** RV4 (ver nota) |
 | RV3a borde dominio | `FranxaTest`: `fin == inicio` ajeno no solapa | `solapaCon` con `<=` | solo ese test |
 | RV3b borde BD | `ReservaExclusionConstraintTest`: adyacentes permitidas | rango `'[]'` en la constraint | solo ese test |
-| RV4 concurrencia | `ReservaConcurrenciaTest`: tx1 inserta y no confirma; tx2 se bloquea (se comprueba en `pg_stat_activity`); tx1 `COMMIT` → tx2 `23P01`; variante con `ROLLBACK` → tx2 triunfa; exactamente uno | quitar `reserva_sen_solape` (comparte mutación con RV2) | RV2 y RV4 |
+| RV4 concurrencia | `ReservaConcurrenciaTest`: tx1 inserta y no confirma; tx2 queda **bloqueada** (aserto obligatorio: `pg_stat_activity` con `wait_event_type = 'Lock'`); tx1 `COMMIT` → tx2 `23P01`; variante con `ROLLBACK` → tx2 triunfa; exactamente uno | quitar `reserva_sen_solape` (comparte mutación con RV2) | RV2 y RV4 |
+| RV4-b aserto de bloqueo | `ReservaConcurrenciaTest` (mismo test): el aserto de `pg_stat_activity` | la 2ª inserción se lanza tras el `COMMIT` de la 1ª (sin bloqueo) | solo RV4 (RV2 verde) |
 | RV5 cancelación | `ReservaCancelacionTest`: cancelar y re-reservar la misma franxa → permitido | constraint **no** parcial (quitar el `WHERE`) | solo ese test |
 | RV6 traducción | `JdbcReservaRepositoryTest`: `gardar` dos veces saltando el check de dominio → `SlotNonDisponible`; pista de otro tenant → `PistaNonExiste` | el adaptador deja pasar la excepción de Spring | solo ese test |
 | RV7 tenant | `ReservaTenantTest`: tenant A no ve ni afecta reservas de B con SQL crudo; FK compuesta rechaza pista de otro tenant | FK solo sobre `pista_id` | solo ese test |
@@ -170,7 +171,10 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 | RV8 privilegios | `ReservaPrivilegiosTest`: `has_table_privilege('pistaberta_app', 'reserva', 'DELETE')` es falso | `GRANT DELETE` | solo ese test |
 | RV9 franxa | `FranxaTest`: `fin <= inicio` rechazado; dos `Instant` que difieren en nanosegundos se normalizan igual que en BD | quitar la normalización | solo ese test |
 
-**Nota (RV2 y RV4 comparten mutación):** ambas dependen de la misma barrera de BD, así que quitarla tumba las dos; se documenta como una regla con dos facetas. No se puede aislar RV4 con otra mutación sin dejar de probar la constraint. Se pide visto en el gate (punto 11).
+**Separación de mutaciones por TIER (resuelto por Pe, punto 11):**
+- **Tier dominio:** RV1 (`comprobarLibre` no hace nada), RV3a (`<=`) y RV9 (sin normalización) mutan código del dominio; solo caen sus tests de dominio.
+- **Tier BD:** quitar `reserva_sen_solape` muta la barrera de la BD y tumba **RV2 y RV4**, dos facetas de la misma barrera (no se pretende aislar RV4 de RV2 con otra mutación). El resto de mutaciones del tier BD (`'[]'`, sin `WHERE`, FK sin `tenant_id`, `GRANT DELETE`, `NO FORCE`) tumban cada una solo su test.
+- **RV4 no es redundante:** su evidencia propia es el aserto sobre `pg_stat_activity` que prueba que la 2ª transacción queda **bloqueada** (la BD serializa). **Un RV4 verde sin ese aserto de bloqueo se considera verde mudo y no cuenta.** Se falsifica con la mutación de escenario "RV4-b": ejecutar la 2ª inserción solo después del `COMMIT` de la 1ª (sin bloqueo real) debe poner RV4 en rojo y dejar RV2 en verde.
 
 **Medir antes de mitigar (orden obligatorio de la implementación):**
 1. Con las tablas `pista`/`reserva` creadas **sin** la exclusion constraint, el test de solape en BD debe salir en **rojo**: los dos inserts pasan (la fuga existe). Solo entonces se añade la constraint.
@@ -184,7 +188,7 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 - Las mutaciones de §5.2 demostradas en rojo y revertidas, con la evidencia en el PR.
 - `V3` aplica limpio sobre BD vacía y sobre el esquema de `V2`; `V1` y `V2` intactas.
 - `TenantCatalogGuardTest` sigue en verde con `pista` y `reserva`.
-- Decisiones D-007..D-009 pasan a ACEPTADA en `docs/decisiones.md` en el mismo PR de implementación.
+- Decisiones D-007..D-009 ya ACEPTADAS en `docs/decisiones.md` (PR #5).
 - Sin merge a `main` sin validación de Pe. `/revision-adversarial` antes del merge (toca esquema e integridad de datos).
 - **NO pulir:** granularidad/duración de franxas, reloj y reglas de antelación, listados, rendimiento más allá del `EXPLAIN`, documentación de usuario.
 
@@ -205,9 +209,32 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 - **R-6 · Zona horaria y DST:** se guardan instantes absolutos; mostrar o razonar en `Europe/Madrid` queda para la spec de normas y UI.
 
 ## 8. PLAN DE EJECUCIÓN
-**PENDIENTE.** Se escribe (tareas T1… con origen, dependencias y lo paralelizable ‖) cuando Pe resuelva cada punto del gate (§9). Orden previsto, sujeto a las respuestas: migración sin constraint y test en rojo → constraint → dominio → casos de uso y adaptador → concurrencia → mutaciones → docs.
+Implementación en `feat/reservas`, un solo PR autónomo desde `origin/main` (sin stacking). Orden obligatorio **medir antes de mitigar**: migración **sin** la constraint y tests en rojo (solape y concurrencia) antes de añadirla. `‖` = paralelizable. Una tarea sin origen sobra.
 
-## 9. GATE DE CLARIFICACIÓN (cada punto con mi propuesta por defecto)
+| ID | Tarea | Origen | Depende de |
+|---|---|---|---|
+| T1 | `V3__pista_reserva.sql` **sin** `reserva_sen_solape`: `btree_gist`, `pista`, `reserva` (CHECKs de estado y de franxa, FK compuesta, índice `(tenant_id, pista_id, inicio)`), RLS + FORCE + policy en ambas, `GRANT` mínimos. | RV7, RV8, RV9, D-008, §4 | — |
+| T2 | Helpers de test en `TestPostgres` (alta de pistas con el superuser, inserción cruda de reservas, rol `pistaberta_app`). ‖ T1, T5 | §5.2 | — |
+| T3 | **Medición en rojo:** `ReservaExclusionConstraintTest` (solape) y `ReservaConcurrenciaTest` (con el aserto de bloqueo de `pg_stat_activity`) contra el esquema de T1 → ambos **rojos** (los dos inserts pasan, 2 filas, la 2ª no se bloquea). Se guarda la salida como evidencia. | §5.2 medir (1)-(3), RV2, RV4 | T1, T2 |
+| T4 | Añadir `reserva_sen_solape` a `V3` (`EXCLUDE USING gist (tenant_id WITH =, pista_id WITH =, tstzrange(inicio, fin) WITH &&) WHERE (estado = 'confirmada')`) → T3 pasa a **verde**. | RV2, RV4, D-007, D-008 | T3 |
+| T5 | Dominio puro `org.pistaberta.domain.reserva`: `Franxa` (microsegundos, `[)`), `Reserva`, `EstadoReserva`, ids, `DisponibilidadePista`, errores (`SlotNonDisponible`, `PistaNonExiste`, `ReservaXaCancelada`) + tests (`FranxaTest`, `DisponibilidadePistaTest`, `ReservaTest`). Identificadores ASCII. ‖ T1, T2 | RV1, RV3a, RV9, RV10 | — |
+| T6 | Tests de BD restantes: adyacentes permitidas (RV3b), cancelar y re-reservar (`ReservaCancelacionTest`, RV5), aislamiento de tenant y FK compuesta (`ReservaTenantTest`, RV7), privilegios (`ReservaPrivilegiosTest`, RV8). ‖ T7, T8 | RV3b, RV5, RV7, RV8 | T4 |
+| T7 | `application.reserva`: puertos `ReservaRepository` y `Transaccion`, casos de uso `ReservarPista` y `CancelarReserva`, con tests sobre fakes en memoria (sin Spring). ‖ T6, T8 | RV1, RV10, D-009 | T5 |
+| T8 | Medición con volumen: `EXPLAIN` de `activasSolapadas` con 200.000 filas; confirmar que usa el índice GiST antes de añadir ningún índice extra. ‖ T6, T7 | §5.2 medir (4) | T4 |
+| T9 | Infraestructura: `JdbcReservaRepository` sobre `TenantScopedJdbc`, adaptador `Transaccion` (`TransactionTemplate` sobre `TenantAwareTransactionManager`), traducción `23P01`/`23503` a errores de dominio; `JdbcReservaRepositoryTest` (RV6) y prueba de extremo a extremo de `ReservarPista` contra la BD real. | RV6, D-009 | T4, T7 |
+| T10 | **Mutaciones por tier**, una a una, aisladas y revertidas con `mvn clean verify` (confirmar que el build cae tras `clean`): tier dominio (RV1, RV3a, RV9); tier BD (quitar constraint → RV2 y RV4; `'[]'`; sin `WHERE`; FK sin `tenant_id`; `GRANT DELETE`; `NO FORCE`); adaptador sin traducción (RV6); escenario RV4-b. Evidencia (qué se mutó, qué cayó) en el PR. | §5.2, DoD | T4, T5, T6, T7, T9 |
+| T11 | `CLAUDE.md`: sección Reservas (invariante en dos capas, constraint parcial, mutaciones por tier, regla del aserto de bloqueo de RV4, identificadores ASCII). ‖ T10 | D-007, D-009, punto 1 | T9 |
+| T12 | Bucle local `mvn -B clean verify` en verde y run del PR en el runner self-hosted; PR `feat/reservas` con origen D-007..D-009 y la evidencia de T3, T8 y T10; **`/revision-adversarial` antes del merge**; sin merge hasta el visto de Pe. | DoD | T10, T11 |
+
+Camino crítico: T1 → T3 → T4 → T6/T9 → T10 → T12.
+
+## 9. GATE DE CLARIFICACIÓN — RESUELTO por Pe (2026-10-30)
+Pe acepta los 17 puntos con sus defaults, con dos matices:
+- **Punto 1:** identificadores ASCII en gallego (`SlotNonDisponible`, `Franxa`, `PistaNonExiste`, `ReservaXaCancelada`); la `ñ` solo en documentación y en strings de usuario.
+- **Punto 11:** aceptado con la separación de mutaciones **por tier** y la regla del aserto de bloqueo de RV4 (ver §5.2).
+- **Punto 17:** D-007, D-008 y D-009 pasan a ACEPTADA.
+
+Puntos y propuestas originales (todas aceptadas):
 | # | Ambigüedad | Propuesta por defecto |
 |---|---|---|
 | 1 | **Nombres en el código.** Tu ejemplo `SlotNoDispoñible` lleva `ñ`; es Java legal, pero un fichero con `ñ` en macOS (normalización NFD de APFS) puede dar problemas con git y CI. ¿Gallego con ñ, ASCII, o castellano? | Identificadores **ASCII** en gallego: `SlotNonDisponible`, `Franxa`, `Reserva`, `PistaNonExiste`, `ReservaXaCancelada`. El lenguaje ubicuo con ñ vive en la documentación. |
