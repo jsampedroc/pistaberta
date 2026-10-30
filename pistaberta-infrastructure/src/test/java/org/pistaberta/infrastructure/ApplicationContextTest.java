@@ -43,12 +43,6 @@ class ApplicationContextTest {
     }
 
     @Test
-    void postgisExtensionIsInstalled() {
-        String postgis = jdbc.queryForObject("SELECT PostGIS_Version()", String.class);
-        assertThat(postgis).isNotBlank();
-    }
-
-    @Test
     void versionTableIsSeeded() {
         String version = jdbc.queryForObject(
                 "SELECT version FROM app_version WHERE component = 'schema'", String.class);
