@@ -19,7 +19,7 @@ Plataforma libre de reserva de instalacións deportivas municipais (candidatura 
 - **Un verde no puede ser mudo**: cada regla con un test que muerde y su mutación aislada; prohibir se verifica.
 - **Mutaciones siempre con `mvn clean verify`, nunca `mvn verify`**: sin `clean`, `target/classes` conserva clases/recursos ya borrados (p.ej. migraciones Flyway) y da un falso verde. Un verde sin `clean` no prueba que la mutación muerda.
 - Al borrar/mover un recurso o export para una mutación, confirma que el build cae tras `clean`; si no cae, la mutación no está probando nada.
-- Bucle local: `mvn -B verify` en verde antes de abrir PR. CI = `mvn -B verify`.
+- Bucle local: `mvn -B verify` en verde antes de abrir PR. CI = `mvn -B clean verify` (ver sección CI).
 - Keywords de cierre (`closes #n`) solo en el cuerpo del PR / última línea del squash, nunca en commits.
 - Cada PR nombra su origen (issue, D-xxx, invariante). Decisiones de dominio ACEPTADAS se apuntan en `docs/decisiones.md` en el mismo PR.
 - Dominio nuevo (multi-tenant, reservas): **spec (`/spec`) aprobada primero**, después código.
@@ -36,3 +36,8 @@ Plataforma libre de reserva de instalacións deportivas municipais (candidatura 
 
 ## Sesiones
 - Una sesión con escritura por repo; worktree por sesión. Todo prompt trae SESIÓN + PRECONDICIONES; si falla una, parar y reportar.
+
+## CI
+- Runner **self-hosted** con etiqueta `pistaberta` (uno por repo, en el Mac de Pe, como el resto del portfolio). El job elige runner con `runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}` y la variable de repo `CI_RUNNER=pistaberta`; borrar la variable vuelve a `ubuntu-latest`.
+- CI ejecuta `mvn -B clean verify`: el runner persiste entre runs y sin `clean` un `target/` viejo (clases o migraciones Flyway ya borradas) da falsos verdes. Es la misma razón de la regla de mutaciones.
+- Los tests de integración usan Testcontainers: el runner necesita Docker corriendo y `docker-credential-anon` en el PATH con `credsStore: anon` en su `DOCKER_CONFIG` (sin él el servicio cae con «keychain cannot be accessed»).
