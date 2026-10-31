@@ -34,6 +34,16 @@ Plataforma libre de reserva de instalacións deportivas municipais (candidatura 
 - Resolver de tenant por header solo en perfiles `dev`/`test`; prod no tiene resolver hasta la spec de auth. Semilla (`db/seed`) solo dev/test; la tabla de prueba (`db/test`) solo test.
 - Mutaciones de aislamiento (una a una, `mvn clean verify`): R1 policy RLS → `TenantRowLevelSecurityTest`; R2 filtro de `TenantScopedJdbc` → `TenantScopedJdbcTest`; R3 `set_config(..., false)` → `TenantPoolIsolationTest`; R4 `NO FORCE` → `TenantCatalogGuardTest`; R5 semilla en `db/migration` → `DefaultProfileTest`.
 
+## Reservas (D-007..D-009, `docs/SDD-reservas.md`)
+- **Invariante de no-solapamiento en DOS capas, ninguna sustituye a la otra:** dominio (`DisponibilidadePista`, fallo rápido con `SlotNonDisponible`) y BD (`reserva_sen_solape`: `EXCLUDE USING gist (tenant_id WITH =, pista_id WITH =, tstzrange(inicio, fin) WITH &&) WHERE (estado = 'confirmada')`). Parcial: cancelar libera la franxa. Intervalo semiabierto `[inicio, fin)`: las adyacentes no solapan. `CHECK (fin > inicio)`; la `Franxa` se normaliza a microsegundos.
+- Los errores de la BD no salen crudos: `JdbcReservaRepository` traduce `23P01` + `reserva_sen_solape` a `SlotNonDisponible` y `23503` + `reserva_pista_fk` a `PistaNonExiste`. Los nombres de constraint son constantes compartidas con la migración.
+- La reserva se cancela, no se borra: la app no tiene `DELETE` sobre `reserva` y solo `SELECT` sobre `pista`. `GRANT` explícito en cada migración.
+- Los casos de uso (`ReservarPista`, `CancelarReserva`) son Java plano en `application` y se ejecutan dentro del puerto `Transaccion` (`TransaccionSpring` sobre `TenantAwareTransactionManager`).
+- **Mutaciones por TIER** (cada una aislada, `mvn clean verify`): dominio (`comprobarLibre` sin efecto, `solapaCon` con `<=`, `Franxa` sin normalizar) vs BD (quitar la constraint tumba RV2 y RV4 como dos facetas de la misma barrera; `'[]'`, constraint sin `WHERE`, FK sin `tenant_id`, `GRANT DELETE`, `NO FORCE`) vs adaptador (sin traducción).
+- **RV4 (concurrencia) solo cuenta con el aserto de `pg_stat_activity`** (`wait_event_type = 'Lock'`) que prueba que la 2ª transacción queda BLOQUEADA. Un RV4 verde sin ese aserto es verde mudo.
+- Identificadores en gallego y ASCII (`Franxa`, `SlotNonDisponible`, `PistaNonExiste`, `ReservaXaCancelada`); la `ñ` solo en documentación y strings de usuario.
+- Tests de integración: cada clase con su `@DynamicPropertySource` crea su propio contexto; el perfil `test` limita el pool de Hikari (`application-test.yml`) para no agotar `max_connections` del Postgres de test.
+
 ## Sesiones
 - Una sesión con escritura por repo; worktree por sesión. Todo prompt trae SESIÓN + PRECONDICIONES; si falla una, parar y reportar.
 

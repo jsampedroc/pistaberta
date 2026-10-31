@@ -2,9 +2,11 @@ package org.pistaberta.infrastructure;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -65,6 +67,40 @@ public final class TestPostgres {
                 st.execute("insert into tenant_probe (tenant_id, etiqueta) values ('" + LALIN + "', 'b" + i + "')");
             }
         }
+    }
+
+    /** Vacía reservas y pistas con el superuser (salta RLS). */
+    public static void resetReservas(PostgreSQLContainer<?> db) throws SQLException {
+        try (Connection c = superuser(db); Statement st = c.createStatement()) {
+            st.execute("truncate reserva, pista");
+        }
+    }
+
+    public static void insertPista(PostgreSQLContainer<?> db, UUID tenant, UUID pista, String nome) throws SQLException {
+        try (Connection c = superuser(db);
+                PreparedStatement ps = c.prepareStatement("insert into pista (id, tenant_id, nome) values (?, ?, ?)")) {
+            ps.setObject(1, pista);
+            ps.setObject(2, tenant);
+            ps.setString(3, nome);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Inserción cruda de una reserva (salta el dominio). Fechas ISO-8601 con zona, p. ej. 2026-11-02T10:00:00Z. */
+    public static UUID insertReserva(Connection c, UUID tenant, UUID pista, String inicio, String fin, String estado)
+            throws SQLException {
+        UUID id = UUID.randomUUID();
+        try (PreparedStatement ps = c.prepareStatement(
+                "insert into reserva (id, tenant_id, pista_id, inicio, fin, estado) values (?, ?, ?, ?, ?, ?)")) {
+            ps.setObject(1, id);
+            ps.setObject(2, tenant);
+            ps.setObject(3, pista);
+            ps.setObject(4, OffsetDateTime.parse(inicio));
+            ps.setObject(5, OffsetDateTime.parse(fin));
+            ps.setString(6, estado);
+            ps.executeUpdate();
+        }
+        return id;
     }
 
     public static long count(Connection c, String sql) throws SQLException {
