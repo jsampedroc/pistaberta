@@ -47,7 +47,7 @@ class ReservaExclusionConstraintTest {
             long filas = TestPostgres.count(c, "select count(*) from reserva where pista_id = '" + PISTA + "'");
             assertThat((Throwable) fallo).as("2ª inserción solapada: filas en la pista=%d (esperado 1)", filas).isNotNull();
             assertThat(fallo.getSQLState()).isEqualTo("23P01");
-            assertThat(((PSQLException) fallo).getServerErrorMessage().getConstraint()).isEqualTo("reserva_sen_solape");
+            assertThat(((PSQLException) fallo).getServerErrorMessage().getConstraint()).isEqualTo(JdbcReservaRepository.CONSTRAINT_SOLAPE);
             assertThat(filas).isEqualTo(1);
         }
     }

@@ -11,12 +11,14 @@ CREATE TABLE pista (
 );
 
 CREATE TABLE reserva (
-    id         uuid PRIMARY KEY,
+    id         uuid NOT NULL,
     tenant_id  uuid NOT NULL REFERENCES tenant (id),
     pista_id   uuid NOT NULL,
     inicio     timestamptz NOT NULL,
     fin        timestamptz NOT NULL,
     estado     text NOT NULL,
+    -- PK compuesta (convención CLAUDE.md: unicidades con tenant_id): un id de otro tenant no colisiona ni revela existencia.
+    CONSTRAINT reserva_pkey PRIMARY KEY (tenant_id, id),
     -- Compuesta: una reserva no puede apuntar a la pista de otro tenant (los chequeos de FK no pasan por RLS).
     CONSTRAINT reserva_pista_fk  FOREIGN KEY (tenant_id, pista_id) REFERENCES pista (tenant_id, id),
     CONSTRAINT reserva_estado_ck CHECK (estado IN ('confirmada', 'cancelada')),
@@ -47,5 +49,24 @@ CREATE POLICY tenant_isolation ON reserva
     WITH CHECK (tenant_id = app_tenant_id());
 
 -- Mínimo privilegio (D-008): la app solo lee pista; reserva no se borra, se cancela.
+-- UPDATE solo sobre estado: la franxa, la pista y el tenant son inmutables para la app (cancelar = cambiar estado).
 GRANT SELECT ON pista TO pistaberta_app;
-GRANT SELECT, INSERT, UPDATE ON reserva TO pistaberta_app;
+GRANT SELECT, INSERT ON reserva TO pistaberta_app;
+GRANT UPDATE (estado) ON reserva TO pistaberta_app;
+
+-- Transición terminal: una reserva cancelada no vuelve a confirmada (se crea una nueva). Barrera de BD: aplica
+-- a cualquier rol y se dispara también con la franxa libre, donde la exclusion constraint no la frenaría.
+CREATE FUNCTION reserva_non_reabrir() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Una reserva cancelada no puede volver a confirmada'
+        USING ERRCODE = 'check_violation', CONSTRAINT = 'reserva_non_reabrir';
+END
+$$;
+
+CREATE TRIGGER reserva_non_reabrir
+    BEFORE UPDATE OF estado ON reserva
+    FOR EACH ROW
+    WHEN (OLD.estado = 'cancelada' AND NEW.estado = 'confirmada')
+    EXECUTE FUNCTION reserva_non_reabrir();

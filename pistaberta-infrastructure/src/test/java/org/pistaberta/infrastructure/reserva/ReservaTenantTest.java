@@ -86,6 +86,32 @@ class ReservaTenantTest {
         }
     }
 
+    /**
+     * F2 · PK compuesta (tenant_id, id): el id de una reserva de otro tenant no colisiona ni revela su existencia.
+     * Con PK global (id) la inserción falla con 23505 y el tenant A sabría que ese id existe en otro concello.
+     */
+    @Test
+    void reservationIdOfAnotherTenantDoesNotCollideNorRevealExistence() throws SQLException {
+        UUID idDeB;
+        try (Connection su = TestPostgres.superuser(TestPostgres.SHARED)) {
+            idDeB = TestPostgres.insertReserva(su, B, PISTA_B, "2026-11-03T10:00:00Z", "2026-11-03T11:00:00Z", "confirmada");
+        }
+        try (Connection c = TestPostgres.appRole(TestPostgres.SHARED)) {
+            c.setAutoCommit(false);
+            setTenant(c, A);
+            try (PreparedStatement ps = c.prepareStatement(
+                    "insert into reserva (id, tenant_id, pista_id, inicio, fin, estado) values (?, ?, ?, '2026-11-03T10:00:00Z', '2026-11-03T11:00:00Z', 'confirmada')")) {
+                ps.setObject(1, idDeB);
+                ps.setObject(2, A);
+                ps.setObject(3, PISTA_A);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new AssertionError("El id de otro tenant no debe colisionar (existencia revelada): " + e.getSQLState(), e);
+            }
+            c.rollback();
+        }
+    }
+
     private static void setTenant(Connection c, UUID tenant) throws SQLException {
         try (PreparedStatement ps = c.prepareStatement("select set_config('app.tenant_id', ?, true)")) {
             ps.setString(1, tenant.toString());
