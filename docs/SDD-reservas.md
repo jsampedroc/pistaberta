@@ -171,7 +171,7 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 | RV2 BD | `ReservaExclusionConstraintTest`: dos solapadas insertadas por SQL saltándose el dominio → 2ª `23P01` | quitar `reserva_sen_solape` de `V3` | RV2, RV4 **y** RV6a (ver nota) |
 | RV3a borde dominio | `FranxaTest`: `fin == inicio` ajeno no solapa | `solapaCon` con `<=` | solo ese test |
 | RV3b borde BD | `ReservaExclusionConstraintTest`: adyacentes permitidas | rango `'[]'` en la constraint | solo ese test |
-| RV4 concurrencia | `ReservaConcurrenciaTest`: tx1 inserta y no confirma; tx2 queda **bloqueada** (aserto obligatorio: `pg_stat_activity` con `wait_event_type = 'Lock'`); tx1 `COMMIT` → tx2 `23P01`; variante con `ROLLBACK` → tx2 triunfa; exactamente uno | quitar `reserva_sen_solape` (comparte mutación con RV2) | RV2 y RV4 |
+| RV4 concurrencia | `ReservaConcurrenciaTest`: tx1 inserta y no confirma; tx2 queda **bloqueada** (aserto obligatorio: `pg_stat_activity` con `wait_event_type = 'Lock'`); tx1 `COMMIT` → tx2 `23P01`; variante con `ROLLBACK` → tx2 triunfa; exactamente uno | quitar `reserva_sen_solape` (comparte mutación con RV2) | RV2, RV4 y RV6a |
 | RV4-b aserto de bloqueo | `ReservaConcurrenciaTest` (mismo test): el aserto de `pg_stat_activity` | la 2ª inserción se lanza tras el `COMMIT` de la 1ª (sin bloqueo) | solo RV4 (RV2 verde) |
 | RV5 cancelación | `ReservaCancelacionTest`: cancelar y re-reservar la misma franxa → permitido | constraint **no** parcial (quitar el `WHERE`) | solo ese test |
 | RV6 traducción | `JdbcReservaRepositoryTest`: `gardar` dos veces saltando el check de dominio → `SlotNonDisponible`; pista de otro tenant → `PistaNonExiste` | el adaptador deja pasar la excepción de Spring | solo ese test |
