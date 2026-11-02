@@ -1,6 +1,6 @@
 # SDD — Reservas: invariante de no-solapamiento
 
-Estado: **APROBADA por Pe (gate resuelto el 2026-10-30)** · §8 Plan completo · sin código ni migraciones en este PR; la implementación (`feat/reservas`) empieza tras el visto de Pe al PR #5.
+Estado: **APROBADA por el/la mantenedor(a) (clarificación resuelta el 2026-10-30)** · §8 Plan completo · sin código ni migraciones en este PR; la implementación (`feat/reservas`) empieza tras el visto del/de la mantenedor(a) al PR #5.
 Normativo: `CLAUDE.md`, `docs/SDD-multi-tenant.md`, `docs/decisiones.md` (D-003..D-009 aceptadas).
 
 ## 0. Meta
@@ -133,7 +133,7 @@ GRANT UPDATE (estado) ON reserva TO pistaberta_app;         -- solo estado (corr
 --   → RAISE check_violation (23514), constraint reserva_non_reabrir (corrección F1)
 ```
 
-**Correcciones tras la 1ª revisión adversarial del PR #6 (visto de Pe):**
+**Correcciones tras la 1ª revisión adversarial del PR #6 (visto del/de la mantenedor(a)):**
 - **F2 · PK compuesta.** Esta spec pedía `PRIMARY KEY (id)` global; la convención de `CLAUDE.md` (unicidades con `tenant_id`) manda. Con PK global, insertar un `id` que pertenece a otro tenant fallaba con `23505` y revelaba su existencia. La FK compuesta no cambia.
 - **F1 · mínimo privilegio y terminal.** La app solo puede `UPDATE (estado)`; `cancelada → confirmada` lo prohíbe un trigger (se crea una reserva nueva). Refina D-008 (ver D-010).
 - **RV6a** es la tercera faceta de la barrera de BD: quitar `reserva_sen_solape` tumba RV2, RV4 y RV6a. No se fabrica una `PSQLException` sintética.
@@ -184,7 +184,7 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 | F3 nombres | RV2 (el test compara con `CONSTRAINT_SOLAPE`) y RV6a/RV6b | renombrar la constraint en `V3` | RV2 + RV6a (solape); RV6b + `ReservarPistaIntegracionTest` (FK) |
 | RV9 franxa | `FranxaTest`: `fin <= inicio` rechazado; dos `Instant` que difieren en nanosegundos se normalizan igual que en BD | quitar la normalización | solo ese test |
 
-**Separación de mutaciones por TIER (resuelto por Pe, punto 11):**
+**Separación de mutaciones por TIER (resuelto por el/la mantenedor(a), punto 11):**
 - **Tier dominio:** RV1 (`comprobarLibre` no hace nada), RV3a (`<=`) y RV9 (sin normalización) mutan código del dominio; solo caen sus tests de dominio.
 - **Tier BD:** quitar `reserva_sen_solape` muta la barrera de la BD y tumba **RV2, RV4 y RV6a**, tres facetas de la misma barrera (no se pretende aislar RV4 ni RV6a de RV2 con otra mutación; RV6a cae porque sin violación real no hay excepción que traducir, y la traducción conserva su mutación propia, "adaptador sin traducir", que la aísla). No se fabrica una `PSQLException` sintética. El resto de mutaciones del tier BD (`'[]'`, sin `WHERE`, FK sin `tenant_id`, `GRANT DELETE`, `NO FORCE`) tumban cada una solo su test.
 - **RV4 no es redundante:** su evidencia propia es el aserto sobre `pg_stat_activity` que prueba que la 2ª transacción queda **bloqueada** (la BD serializa). **Un RV4 verde sin ese aserto de bloqueo se considera verde mudo y no cuenta.** Se falsifica con la mutación de escenario "RV4-b": ejecutar la 2ª inserción solo después del `COMMIT` de la 1ª (sin bloqueo real) debe poner RV4 en rojo y dejar RV2 en verde.
@@ -202,7 +202,7 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 - `V3` aplica limpio sobre BD vacía y sobre el esquema de `V2`; `V1` y `V2` intactas.
 - `TenantCatalogGuardTest` sigue en verde con `pista` y `reserva`.
 - Decisiones D-007..D-009 ya ACEPTADAS en `docs/decisiones.md` (PR #5).
-- Sin merge a `main` sin validación de Pe. `/revision-adversarial` antes del merge (toca esquema e integridad de datos).
+- Sin merge a `main` sin validación del/de la mantenedor(a). Revisión adversarial antes del merge (toca esquema e integridad de datos).
 - **NO pulir:** granularidad/duración de franxas, reloj y reglas de antelación, listados, rendimiento más allá del `EXPLAIN`, documentación de usuario.
 
 ## 7. RESTRICCIONES / no-gos
@@ -237,12 +237,12 @@ Implementación en `feat/reservas`, un solo PR autónomo desde `origin/main` (si
 | T9 | Infraestructura: `JdbcReservaRepository` sobre `TenantScopedJdbc`, adaptador `Transaccion` (`TransactionTemplate` sobre `TenantAwareTransactionManager`), traducción `23P01`/`23503` a errores de dominio; `JdbcReservaRepositoryTest` (RV6) y prueba de extremo a extremo de `ReservarPista` contra la BD real. | RV6, D-009 | T4, T7 |
 | T10 | **Mutaciones por tier**, una a una, aisladas y revertidas con `mvn clean verify` (confirmar que el build cae tras `clean`): tier dominio (RV1, RV3a, RV9); tier BD (quitar constraint → RV2 y RV4; `'[]'`; sin `WHERE`; FK sin `tenant_id`; `GRANT DELETE`; `NO FORCE`); adaptador sin traducción (RV6); escenario RV4-b. Evidencia (qué se mutó, qué cayó) en el PR. | §5.2, DoD | T4, T5, T6, T7, T9 |
 | T11 | `CLAUDE.md`: sección Reservas (invariante en dos capas, constraint parcial, mutaciones por tier, regla del aserto de bloqueo de RV4, identificadores ASCII). ‖ T10 | D-007, D-009, punto 1 | T9 |
-| T12 | Bucle local `mvn -B clean verify` en verde y run del PR en el runner self-hosted; PR `feat/reservas` con origen D-007..D-009 y la evidencia de T3, T8 y T10; **`/revision-adversarial` antes del merge**; sin merge hasta el visto de Pe. | DoD | T10, T11 |
+| T12 | Bucle local `mvn -B clean verify` en verde y run del PR en el runner self-hosted; PR `feat/reservas` con origen D-007..D-009 y la evidencia de T3, T8 y T10; **revisión adversarial antes del merge**; sin merge hasta el visto del/de la mantenedor(a). | DoD | T10, T11 |
 
 Camino crítico: T1 → T3 → T4 → T6/T9 → T10 → T12.
 
-## 9. GATE DE CLARIFICACIÓN — RESUELTO por Pe (2026-10-30)
-Pe acepta los 17 puntos con sus defaults, con dos matices:
+## 9. CLARIFICACIÓN — RESUELTA por el/la mantenedor(a) (2026-10-30)
+El/la mantenedor(a) acepta los 17 puntos con sus defaults, con dos matices:
 - **Punto 1:** identificadores ASCII en gallego (`SlotNonDisponible`, `Franxa`, `PistaNonExiste`, `ReservaXaCancelada`); la `ñ` solo en documentación y en strings de usuario.
 - **Punto 11:** aceptado con la separación de mutaciones **por tier** y la regla del aserto de bloqueo de RV4 (ver §5.2).
 - **Punto 17:** D-007, D-008 y D-009 pasan a ACEPTADA.

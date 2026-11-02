@@ -1,6 +1,6 @@
 # SDD — Multi-tenant (concello = tenant)
 
-Estado: **PROPUESTA PARA VISTO DE PE** · no hay código de implementación en este PR.
+Estado: **PROPUESTA PENDIENTE DE VISTO DEL/DE LA MANTENEDOR(A)** · no hay código de implementación en este PR.
 Normativo: `CLAUDE.md` y `docs/decisiones.md` (D-003 a D-006 nacen de esta spec).
 
 ## 0. Meta
@@ -126,7 +126,7 @@ Tras cada mutación se confirma que el build cae **tras `clean`**; si no cae, la
 - C1..C10 verificados; `mvn -B clean verify` en verde (bucle local documentado en el PR).
 - Las 5 mutaciones (R1..R5) demostradas en rojo y revertidas, con la evidencia en el PR.
 - Migración V2 aplica limpia sobre BD vacía.
-- Sin merge a `main` sin validación de Pe.
+- Sin merge a `main` sin validación del/de la mantenedor(a).
 - **NO pulir:** nombres de concellos más allá de la semilla, rendimiento fino, UI, métricas, documentación de usuario.
 
 ## 7. RESTRICCIONES / no-gos
@@ -162,8 +162,8 @@ Una tarea sin origen sobra. `‖` = paralelizable con la tarea indicada.
 | T9 | Tests R3 (pool), R4 (guard de catálogo), R5 (semilla). | C5, C6, C8 | T6, T7 |
 | T10 | Ejecutar las 5 mutaciones con `mvn clean verify`, una a una, revertir y adjuntar evidencia al PR. | §5.2, DoD | T6..T9 |
 | T11 | Docs: sección multi-tenant en `CLAUDE.md` (todo acceso a datos dentro de transacción; convención de tablas con RLS); README (variables y roles). ‖ T9 | C10, Q7 | T6 |
-| T12 | Bucle local `mvn -B clean verify` en verde; PR `feat/multi-tenant` con origen D-003..D-006 y mutaciones; **sin merge** hasta visto de Pe. | DoD | T1..T11 |
+| T12 | Bucle local `mvn -B clean verify` en verde; PR `feat/multi-tenant` con origen D-003..D-006 y mutaciones; **sin merge** hasta el visto del/de la mantenedor(a). | DoD | T1..T11 |
 
-## 9. Decisiones resueltas (gate de clarificación)
-Todas las ambigüedades quedaron resueltas por Pe el 2026-10-30 y pasan a `docs/decisiones.md`: Q2 → D-003 · Q1 → D-004 · Q3, Q4, Q8 → D-005 · Q5, Q6, Q7 → D-006 · Q9 fuera de alcance · Q10, Q11, Q12 y Q13 recogidas en este documento.
-Decisiones abiertas para Pe: **ninguna**; solo falta su visto a esta spec.
+## 9. Decisiones resueltas (clarificación previa)
+Todas las ambigüedades quedaron resueltas por el/la mantenedor(a) el 2026-10-30 y pasan a `docs/decisiones.md`: Q2 → D-003 · Q1 → D-004 · Q3, Q4, Q8 → D-005 · Q5, Q6, Q7 → D-006 · Q9 fuera de alcance · Q10, Q11, Q12 y Q13 recogidas en este documento.
+Decisiones abiertas: **ninguna**; solo falta el visto del/de la mantenedor(a) a esta spec.
