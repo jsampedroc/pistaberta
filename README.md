@@ -48,7 +48,7 @@ Detalle técnico en [ARCHITECTURE.md](ARCHITECTURE.md); decisións en [docs/deci
 
 - Licenza aberta EUPL-1.2 e código completo no repositorio.
 - Só tecnoloxías abertas e sen licenza de pago: Java, PostgreSQL/PostGIS, Spring Boot.
-- Os datos viven en PostgreSQL estándar (SQL, sen extensións propietarias); o esquema está versionado nas migracións, así que o concello pode desprexar en infraestrutura propia ou xestionada por un provedor á súa elección, e migrar de provedor sen perder datos.
+- Os datos viven en PostgreSQL estándar (SQL, sen extensións propietarias); o esquema está versionado nas migracións, así que o concello pode despregar en infraestrutura propia ou xestionada por un provedor á súa elección, e migrar de provedor sen perder datos.
 - Fusos horarios: as franxas gárdanse como instantes absolutos (`timestamptz`).
 - Sen dependencia de servizos externos en tempo de execución.
 
