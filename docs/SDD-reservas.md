@@ -52,7 +52,7 @@ Lenguaje ubicuo (gl/es):
 | RV5 | **Cancelación libera:** cancelar una reserva confirmada y re-reservar la misma franxa → permitido (constraint parcial). |
 | RV6 | **Traducción:** el adaptador convierte `23P01` en `SlotNonDisponible` y `23503` (pista inexistente en el tenant) en `PistaNonExiste`; nunca sale SQL crudo ni `DataIntegrityViolationException` del caso de uso. |
 | RV7 | **Multi-tenant (C6):** `pista` y `reserva` con `tenant_id NOT NULL`, RLS + FORCE + policy e índice que empiece por `tenant_id`; una reserva no puede apuntar a la pista de otro tenant (FK compuesta). |
-| RV8 | **Mínimo privilegio:** la app solo `SELECT` en `pista`; `SELECT, INSERT, UPDATE` (sin `DELETE`) en `reserva`; cancelar es un cambio de estado, no un borrado. |
+| RV8 | **Mínimo privilegio:** la app solo `SELECT` en `pista`; `SELECT, INSERT` y `UPDATE (estado)` (sin `DELETE`) en `reserva`; cancelar es un cambio de estado, no un borrado; `cancelada → confirmada` prohibido por trigger. |
 | RV9 | **Integridad de la franxa:** `fin > inicio` (dominio y `CHECK`); la franxa se normaliza a microsegundos para que dominio y BD coincidan en el borde. |
 | RV10 | `domain` y `application` siguen sin Spring ni JPA (enforcer verde); `V1` y `V2` no se tocan. |
 
@@ -108,12 +108,13 @@ CREATE TABLE pista (
 );
 
 CREATE TABLE reserva (
-    id         uuid PRIMARY KEY,
+    id         uuid NOT NULL,
     tenant_id  uuid NOT NULL REFERENCES tenant (id),
     pista_id   uuid NOT NULL,
     inicio     timestamptz NOT NULL,
     fin        timestamptz NOT NULL,
     estado     text NOT NULL,
+    CONSTRAINT reserva_pkey       PRIMARY KEY (tenant_id, id),     -- compuesta (corrección F2, ver nota)
     CONSTRAINT reserva_pista_fk   FOREIGN KEY (tenant_id, pista_id) REFERENCES pista (tenant_id, id),
     CONSTRAINT reserva_estado_ck  CHECK (estado IN ('confirmada', 'cancelada')),
     CONSTRAINT reserva_franxa_ck  CHECK (fin > inicio),
@@ -126,8 +127,16 @@ CREATE INDEX reserva_tenant_pista_inicio_idx ON reserva (tenant_id, pista_id, in
 -- RLS en ambas (mismo patrón que tenant_probe): ENABLE + FORCE + policy
 --   USING (tenant_id = app_tenant_id()) WITH CHECK (tenant_id = app_tenant_id())
 GRANT SELECT ON pista TO pistaberta_app;
-GRANT SELECT, INSERT, UPDATE ON reserva TO pistaberta_app;   -- sin DELETE
+GRANT SELECT, INSERT ON reserva TO pistaberta_app;           -- sin DELETE
+GRANT UPDATE (estado) ON reserva TO pistaberta_app;         -- solo estado (corrección F1)
+-- Trigger BEFORE UPDATE OF estado ... WHEN (OLD.estado = 'cancelada' AND NEW.estado = 'confirmada')
+--   → RAISE check_violation (23514), constraint reserva_non_reabrir (corrección F1)
 ```
+
+**Correcciones tras la 1ª revisión adversarial del PR #6 (visto de Pe):**
+- **F2 · PK compuesta.** Esta spec pedía `PRIMARY KEY (id)` global; la convención de `CLAUDE.md` (unicidades con `tenant_id`) manda. Con PK global, insertar un `id` que pertenece a otro tenant fallaba con `23505` y revelaba su existencia. La FK compuesta no cambia.
+- **F1 · mínimo privilegio y terminal.** La app solo puede `UPDATE (estado)`; `cancelada → confirmada` lo prohíbe un trigger (se crea una reserva nueva). Refina D-008 (ver D-010).
+- **RV6a** es la tercera faceta de la barrera de BD: quitar `reserva_sen_solape` tumba RV2, RV4 y RV6a. No se fabrica una `PSQLException` sintética.
 
 - `tstzrange(inicio, fin)` usa el límite por defecto `[)`: dos franxas adyacentes no solapan.
 - La constraint es **parcial**: solo cuenta `estado = 'confirmada'`; las canceladas se conservan como histórico y no bloquean.
@@ -159,21 +168,25 @@ Cada regla con su test que muerde y su mutación **aislada**, ejecutada con `mvn
 | Regla | Test que muerde | Mutación aislada | Rojo esperado |
 |---|---|---|---|
 | RV1 dominio | `DisponibilidadePistaTest`: dos solapadas, misma pista → `SlotNonDisponible` | `comprobarLibre` no hace nada | solo ese test (el de BD sigue verde) |
-| RV2 BD | `ReservaExclusionConstraintTest`: dos solapadas insertadas por SQL saltándose el dominio → 2ª `23P01` | quitar `reserva_sen_solape` de `V3` | RV2 **y** RV4 (ver nota) |
+| RV2 BD | `ReservaExclusionConstraintTest`: dos solapadas insertadas por SQL saltándose el dominio → 2ª `23P01` | quitar `reserva_sen_solape` de `V3` | RV2, RV4 **y** RV6a (ver nota) |
 | RV3a borde dominio | `FranxaTest`: `fin == inicio` ajeno no solapa | `solapaCon` con `<=` | solo ese test |
 | RV3b borde BD | `ReservaExclusionConstraintTest`: adyacentes permitidas | rango `'[]'` en la constraint | solo ese test |
-| RV4 concurrencia | `ReservaConcurrenciaTest`: tx1 inserta y no confirma; tx2 queda **bloqueada** (aserto obligatorio: `pg_stat_activity` con `wait_event_type = 'Lock'`); tx1 `COMMIT` → tx2 `23P01`; variante con `ROLLBACK` → tx2 triunfa; exactamente uno | quitar `reserva_sen_solape` (comparte mutación con RV2) | RV2 y RV4 |
+| RV4 concurrencia | `ReservaConcurrenciaTest`: tx1 inserta y no confirma; tx2 queda **bloqueada** (aserto obligatorio: `pg_stat_activity` con `wait_event_type = 'Lock'`); tx1 `COMMIT` → tx2 `23P01`; variante con `ROLLBACK` → tx2 triunfa; exactamente uno | quitar `reserva_sen_solape` (comparte mutación con RV2) | RV2, RV4 y RV6a |
 | RV4-b aserto de bloqueo | `ReservaConcurrenciaTest` (mismo test): el aserto de `pg_stat_activity` | la 2ª inserción se lanza tras el `COMMIT` de la 1ª (sin bloqueo) | solo RV4 (RV2 verde) |
 | RV5 cancelación | `ReservaCancelacionTest`: cancelar y re-reservar la misma franxa → permitido | constraint **no** parcial (quitar el `WHERE`) | solo ese test |
 | RV6 traducción | `JdbcReservaRepositoryTest`: `gardar` dos veces saltando el check de dominio → `SlotNonDisponible`; pista de otro tenant → `PistaNonExiste` | el adaptador deja pasar la excepción de Spring | solo ese test |
 | RV7 tenant | `ReservaTenantTest`: tenant A no ve ni afecta reservas de B con SQL crudo; FK compuesta rechaza pista de otro tenant | FK solo sobre `pista_id` | solo ese test |
 | RV7 guard | `TenantCatalogGuardTest` (existente) | `NO FORCE` en `reserva` | solo el guard |
 | RV8 privilegios | `ReservaPrivilegiosTest`: `has_table_privilege('pistaberta_app', 'reserva', 'DELETE')` es falso | `GRANT DELETE` | solo ese test |
+| RV8 columna (F1) | `ReservaPrivilegiosTest`: `has_column_privilege` del rol app sobre `inicio`/`fin`/`pista_id`/`tenant_id`/`id` = falso y sobre `estado` = verdadero; el `UPDATE` de la franxa con el rol app da `42501` | `GRANT UPDATE ON reserva` (de tabla entera) | solo esos 2 tests |
+| RV8 terminal (F1) | `ReservaTransicionTest`: `cancelada → confirmada` con la franxa **libre** → `23514` / `reserva_non_reabrir` | quitar el trigger | solo ese test |
+| F2 PK compuesta | `ReservaTenantTest`: el tenant A inserta un `id` de reserva de B sin colisión (sin `23505`) | `PRIMARY KEY (id)` global | solo ese test |
+| F3 nombres | RV2 (el test compara con `CONSTRAINT_SOLAPE`) y RV6a/RV6b | renombrar la constraint en `V3` | RV2 + RV6a (solape); RV6b + `ReservarPistaIntegracionTest` (FK) |
 | RV9 franxa | `FranxaTest`: `fin <= inicio` rechazado; dos `Instant` que difieren en nanosegundos se normalizan igual que en BD | quitar la normalización | solo ese test |
 
 **Separación de mutaciones por TIER (resuelto por Pe, punto 11):**
 - **Tier dominio:** RV1 (`comprobarLibre` no hace nada), RV3a (`<=`) y RV9 (sin normalización) mutan código del dominio; solo caen sus tests de dominio.
-- **Tier BD:** quitar `reserva_sen_solape` muta la barrera de la BD y tumba **RV2 y RV4**, dos facetas de la misma barrera (no se pretende aislar RV4 de RV2 con otra mutación). El resto de mutaciones del tier BD (`'[]'`, sin `WHERE`, FK sin `tenant_id`, `GRANT DELETE`, `NO FORCE`) tumban cada una solo su test.
+- **Tier BD:** quitar `reserva_sen_solape` muta la barrera de la BD y tumba **RV2, RV4 y RV6a**, tres facetas de la misma barrera (no se pretende aislar RV4 ni RV6a de RV2 con otra mutación; RV6a cae porque sin violación real no hay excepción que traducir, y la traducción conserva su mutación propia, "adaptador sin traducir", que la aísla). No se fabrica una `PSQLException` sintética. El resto de mutaciones del tier BD (`'[]'`, sin `WHERE`, FK sin `tenant_id`, `GRANT DELETE`, `NO FORCE`) tumban cada una solo su test.
 - **RV4 no es redundante:** su evidencia propia es el aserto sobre `pg_stat_activity` que prueba que la 2ª transacción queda **bloqueada** (la BD serializa). **Un RV4 verde sin ese aserto de bloqueo se considera verde mudo y no cuenta.** Se falsifica con la mutación de escenario "RV4-b": ejecutar la 2ª inserción solo después del `COMMIT` de la 1ª (sin bloqueo real) debe poner RV4 en rojo y dejar RV2 en verde.
 
 **Medir antes de mitigar (orden obligatorio de la implementación):**
