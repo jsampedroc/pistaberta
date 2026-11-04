@@ -2,7 +2,7 @@
 
 Plataforma **libre** de reserva de instalacións deportivas municipais, pensada para que cada concello a despregue na súa propia infraestrutura e a poida auditar, adaptar e manter. Candidatura ao I Certame GOBTEC.
 
-- Demo: <https://claude.ai/artifact/B7K4yCzgWTX4BkVz3XeVq5>
+- Demo: <https://jsampedroc.github.io/pistaberta/demo.html>
 - Vídeo: <https://www.youtube.com/watch?v=aitXu8-t97Q>
 
 ## O reto
