@@ -2,6 +2,7 @@ package org.pistaberta.infrastructure.tenant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -45,5 +46,16 @@ class DefaultProfileTest {
     @Test
     void apiFailsClosedWithoutTenantResolver() throws Exception {
         mvc.perform(get("/api/anything").header("X-Tenant-Id", "a-estrada")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void reservationRoutesFailClosedWithoutTenantResolver() throws Exception {
+        // D-012/D-014: sin spec de auth, en prod no hay resolver: reservar y cancelar no pueden abrirse por cabecera.
+        mvc.perform(post("/api/pistas/00000000-0000-4000-8000-0000000000a1/reservas").header("X-Tenant-Id", "a-estrada")
+                .contentType("application/json")
+                .content("{\"inicio\":\"2026-11-20T18:00:00+01:00\",\"fin\":\"2026-11-20T19:00:00+01:00\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/reservas/00000000-0000-4000-8000-0000000000a1/cancelar").header("X-Tenant-Id", "a-estrada"))
+                .andExpect(status().isUnauthorized());
     }
 }

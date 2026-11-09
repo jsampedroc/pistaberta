@@ -101,7 +101,7 @@ GRANT SELECT, INSERT ON reserva_acceso TO pistaberta_app;   -- sin UPDATE ni DEL
 - **Analítica:** sin tablas nuevas; lee `reserva` y `pista` con los `SELECT` ya concedidos. Sirve el índice `reserva_tenant_pista_inicio_idx`; no se añade otro hasta medir con `EXPLAIN`.
 
 ## 5. CONTRATOS/API
-Errores en `application/problem+json` (RFC 7807), sin trazas ni SQL.
+Errores de los casos de uso y de MVC en `application/problem+json` (RFC 7807), sin trazas ni SQL. Los del `TenantFilter` (sin tenant, tenant desconocido, prod sin resolver) salen sin cuerpo: ocurren antes de MVC (`sendError`). Franxa fuera de `[1900-01-01, 9999-12-31T23:59:59Z]` → 400 `FranxaInvalida` (guarda técnica del adaptador: el driver convierte las fechas muy anteriores en `-infinity` y Postgres rechaza las posteriores al año 294276).
 
 ### Rutas con cabecera `X-Tenant-Id` (solo perfiles `dev`/`test`)
 | Método | Ruta | Propósito | Auth |
