@@ -72,7 +72,7 @@ public final class TestPostgres {
     /** Vacía reservas y pistas con el superuser (salta RLS). */
     public static void resetReservas(PostgreSQLContainer<?> db) throws SQLException {
         try (Connection c = superuser(db); Statement st = c.createStatement()) {
-            st.execute("truncate reserva, pista");
+            st.execute("truncate reserva_acceso, reserva, pista");
         }
     }
 
