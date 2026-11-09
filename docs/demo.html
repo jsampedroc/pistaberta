@@ -165,6 +165,7 @@
   .booking h3{font-size:1rem}
   .booking .bk-meta{font-size:.8rem;color:var(--muted);margin-top:3px}
   .badge{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px}
+  .badge-warn{background:var(--warn-soft);color:var(--warn)}
   .badge-good{background:var(--good-soft);color:var(--good)}
   .empty{text-align:center;color:var(--muted);padding:48px 20px;border:1.5px dashed var(--border);border-radius:var(--radius)}
   .empty svg{width:30px;height:30px;color:var(--faint);margin-bottom:8px}
@@ -2552,6 +2553,7 @@ const I18N={
     code:"Código", seeMine:"Ver as miñas reservas", newRes:"Nova reserva",
     mineH:"As miñas reservas", mineP:"Modifica, cancela ou amosa o QR de acceso.",
     noneH:"Aínda non tes reservas", noneP:"Vai a «Explorar» para reservar unha instalación.",
+    addCal:"Engadir ao calendario", proto:"Prototipo", recH:"Horarios recomendados", recP:"As 3 franxas con menor ocupación media. Recomendación de exemplo con datos simulados, non historial real.",
     cancel:"Cancelar", active:"Activa", accessQR:"QR de acceso",
     panelH:"Panel do concello", panelP:"Seguimento de uso das instalacións municipais.",
     k_occ:"Ocupación hoxe", k_res:"Reservas hoxe", k_can:"Cancelacións", k_no:"No-shows",
@@ -2580,6 +2582,7 @@ const I18N={
     code:"Código", seeMine:"Ver mis reservas", newRes:"Nueva reserva",
     mineH:"Mis reservas", mineP:"Modifica, cancela o muestra el QR de acceso.",
     noneH:"Aún no tienes reservas", noneP:"Ve a «Explorar» para reservar una instalación.",
+    addCal:"Añadir al calendario", proto:"Prototipo", recH:"Horarios recomendados", recP:"Las 3 franjas con menor ocupación media. Recomendación de ejemplo con datos simulados, no historial real.",
     cancel:"Cancelar", active:"Activa", accessQR:"QR de acceso",
     panelH:"Panel del ayuntamiento", panelP:"Seguimiento de uso de las instalaciones municipales.",
     k_occ:"Ocupación hoy", k_res:"Reservas hoy", k_can:"Cancelaciones", k_no:"No-shows",
@@ -2823,6 +2826,7 @@ function renderMine(){
           <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
             <span class="badge badge-good">${t("active")}</span>
             <button class="btn btn-ghost" data-cancel="${idx}" style="padding:6px 12px;font-size:.8rem">${t("cancel")}</button>
+            <button class="btn btn-ghost" data-ics="${idx}" style="padding:6px 12px;font-size:.8rem">${t("addCal")} <span class="badge badge-warn">${t("proto")}</span></button>
           </div>
         </div>
       </article>`;}).join("")}</div>`);
@@ -2849,6 +2853,8 @@ function renderPanel(){
   const W=640,H=150,pad=26,bw=(W-pad*2)/hours.length;
   const bars=hours.map((h,idx)=>{const o=st.byHour[h].cap?st.byHour[h].bk/st.byHour[h].cap:0;const bh=o*(H-pad-10);const x=pad+idx*bw;const y=H-pad-bh;const col=o>=.75?"var(--crit)":o>=.5?"var(--warn)":"var(--accent)";
     return `<rect x="${x+2}" y="${y}" width="${bw-4}" height="${bh}" rx="3" fill="${col}"></rect>`+(h%2===0?`<text x="${x+bw/2}" y="${H-pad+14}" text-anchor="middle" font-size="9" fill="var(--muted)">${h}h</text>`:"");}).join("");
+  const rec=hours.filter(h=>st.byHour[h].cap>0).map(h=>({h,o:st.byHour[h].bk/st.byHour[h].cap})).sort((a,b)=>a.o-b.o||a.h-b.h).slice(0,3);
+  const p2=n=>String(n).padStart(2,"0");
   app.innerHTML=`<div class="page-head"><h1>${t("panelH")}</h1><p>${t("panelP")} — ${c.name}</p></div>
     <div class="demo-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg><span>${t("demo")}</span></div>
     <div class="kpis">
@@ -2865,6 +2871,10 @@ function renderPanel(){
         <text x="${pad-4}" y="${H-pad-(H-pad-10)*0.5}" text-anchor="end" font-size="9" fill="var(--muted)">50%</text>
         ${bars}
       </svg></div>
+    </div>
+    <div class="panel">
+      <h2>${t("recH")} <span class="badge badge-warn">${t("proto")}</span></h2><p class="psub">${t("recP")}</p>
+      <div class="chips">${rec.map(r=>`<span class="chip tnum">${p2(r.h)}:00–${p2(r.h+1)}:00 · ${Math.round(r.o*100)}%</span>`).join("")}</div>
     </div>
     <div class="panel">
       <h2>${t("recent")}</h2><p class="psub">${t("recentP")}</p>
@@ -2936,9 +2946,22 @@ function saveInst(id){
 }
 function delInst(id){const c=muni(),k=c.insts.findIndex(x=>x.id===id);if(k>=0)c.insts.splice(k,1);closeSheet();renderFacilities();}
 
+/* ---------- Calendario personal: .ics de la reserva (prototipo de la demo) ---------- */
+function icsEscape(x){return String(x).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
+function downloadIcs(idx){
+  const b=S.myBookings[idx]; if(!b)return;
+  const c=CONCELLOS.find(x=>x.id===b.cid), i=c.insts.find(x=>x.id===b.iid);
+  const runs=[]; [...b.hours].sort((a,z)=>a-z).forEach(h=>{const r=runs[runs.length-1]; if(r&&h===r[1])r[1]=h+1; else runs.push([h,h+1]);});
+  const d=b.date.replace(/-/g,""), p=n=>String(n).padStart(2,"0"), stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");
+  const ev=runs.map((r,k)=>["BEGIN:VEVENT","UID:"+resCode(b)+"-"+k+"@pistaberta.demo","DTSTAMP:"+stamp,"DTSTART:"+d+"T"+p(r[0])+"0000","DTEND:"+d+"T"+p(r[1])+"0000","SUMMARY:"+icsEscape(i.name+" · "+c.name),"STATUS:CONFIRMED","END:VEVENT"].join("\r\n")).join("\r\n");
+  const ics=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//PistaAberta//Demo//GL",ev,"END:VCALENDAR"].join("\r\n")+"\r\n";
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([ics],{type:"text/calendar"})); a.download=resCode(b)+".ics";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
 /* ============================ events ============================ */
 document.addEventListener("click",e=>{
-  const el=e.target.closest("[data-lang],[data-role],[data-tab],[data-day],[data-sport],[data-open],[data-slot],[data-cancel],[data-newinst],[data-editinst],[data-saveinst],[data-delinst],#themeBtn,#closeSheet,#ov,#doReserve,#againBtn,#goMine");
+  const el=e.target.closest("[data-lang],[data-role],[data-tab],[data-day],[data-sport],[data-open],[data-slot],[data-cancel],[data-ics],[data-newinst],[data-editinst],[data-saveinst],[data-delinst],#themeBtn,#closeSheet,#ov,#doReserve,#againBtn,#goMine");
   if(!el)return;
   if(el.id==="ov"&&e.target.id==="ov"){closeSheet();return;}
   if(el.dataset.lang){S.lang=el.dataset.lang;render();return;}
@@ -2952,6 +2975,7 @@ document.addEventListener("click",e=>{
   if(el.id==="doReserve"){confirmReserve();return;}
   if(el.id==="againBtn"){closeSheet();S.tab="t_explore";render();return;}
   if(el.id==="goMine"){closeSheet();S.tab="t_mine";render();return;}
+  if(el.dataset.ics!=null){downloadIcs(+el.dataset.ics);return;}
   if(el.dataset.cancel!=null){S.myBookings.splice(+el.dataset.cancel,1);renderMine();return;}
   if(el.hasAttribute("data-newinst")){openInstForm(null);return;}
   if(el.dataset.editinst){openInstForm(el.dataset.editinst);return;}
