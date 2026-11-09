@@ -1,10 +1,6 @@
 spring:
   application:
     name: pistaberta
-  # Errores de MVC (JSON mal formado, UUID inválido…) como application/problem+json (RFC 7807), sin trazas.
-  mvc:
-    problemdetails:
-      enabled: true
   # La app se conecta con el rol no privilegiado pistaberta_app (sujeto a RLS).
   # Las contraseñas NO tienen valor por defecto: sin DB_PASSWORD / DB_MIGRATION_PASSWORD la app no arranca.
   # Los valores de desarrollo local viven en application-dev.yml.

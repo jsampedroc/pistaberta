@@ -150,4 +150,46 @@ class ReservaApiTest {
         mvc.perform(post("/api/pistas/{id}/reservas", PISTA_A).contentType(MediaType.APPLICATION_JSON).content(UNA_A_DOUS))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void franxasOutsideTheSupportedRangeAre400ProblemJsonNeverAnInternalErrorNorAnUnboundedReservation() throws Exception {
+        String[][] fuera = {
+            {"+300000-01-01T00:00:00Z", "+300000-01-01T01:00:00Z"},
+            {"-100000-01-01T00:00:00Z", "2026-12-05T10:00:00Z"}, // antes: 201 con inicio = -infinity
+            {"-100000-01-01T00:00:00Z", "-100000-01-01T01:00:00Z"},
+            {"2026-12-05T10:00:00Z", "+999999999-01-01T00:00:00Z"},
+        };
+        for (String[] f : fuera) {
+            mvc.perform(reservar(PISTA_A, "{\"inicio\":\"" + f[0] + "\",\"fin\":\"" + f[1] + "\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(header().string("Content-Type", org.hamcrest.Matchers.startsWith("application/problem+json")));
+        }
+        try (Connection c = TestPostgres.superuser(TestPostgres.SHARED)) {
+            assertThat(TestPostgres.count(c, "select count(*) from reserva")).as("no se crea nada").isZero();
+            assertThat(TestPostgres.count(c, "select count(*) from reserva_acceso")).isZero();
+        }
+    }
+
+    @Test
+    void theResponseShowsThePersistedFranxaNormalisedToMicroseconds() throws Exception {
+        mvc.perform(reservar(PISTA_A,
+                "{\"inicio\":\"2026-12-01T10:00:00.123456789Z\",\"fin\":\"2026-12-01T11:00:00.987654321Z\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.inicio").value("2026-12-01T10:00:00.123456Z"))
+                .andExpect(jsonPath("$.fin").value("2026-12-01T11:00:00.987654Z"));
+        try (Connection c = TestPostgres.superuser(TestPostgres.SHARED);
+                java.sql.Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("select inicio = timestamptz '2026-12-01 10:00:00.123456+00' "
+                        + "and fin = timestamptz '2026-12-01 11:00:00.987654+00' from reserva")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getBoolean(1)).as("lo devuelto es exactamente lo guardado").isTrue();
+        }
+    }
+
+    @Test
+    void theCreatedResponseNeverPrintsTheTokenInItsToString() {
+        var respuesta = new ReservaController.ReservaCreada(UUID.randomUUID(), java.time.OffsetDateTime.now(),
+                java.time.OffsetDateTime.now(), "confirmada", "SECRETO-DEL-TOKEN");
+        assertThat(respuesta.toString()).doesNotContain("SECRETO-DEL-TOKEN");
+    }
 }

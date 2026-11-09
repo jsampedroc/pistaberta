@@ -1,6 +1,8 @@
 package org.pistaberta.infrastructure.web;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import org.pistaberta.application.acceso.ReservaConAcceso;
 import org.pistaberta.application.acceso.ReservarPistaConAcceso;
@@ -33,7 +35,14 @@ class ReservaController {
 
     record ReservarRequest(OffsetDateTime inicio, OffsetDateTime fin) {}
 
-    record ReservaCreada(UUID reservaId, OffsetDateTime inicio, OffsetDateTime fin, String estado, String token) {}
+    record ReservaCreada(UUID reservaId, OffsetDateTime inicio, OffsetDateTime fin, String estado, String token) {
+
+        /** El token es un ticket al portador: el {@code toString} automático del record lo imprimiría en claro. */
+        @Override
+        public String toString() {
+            return "ReservaCreada[reservaId=" + reservaId + ", estado=" + estado + ", token=***]";
+        }
+    }
 
     @PostMapping("/api/pistas/{pistaId}/reservas")
     ResponseEntity<ReservaCreada> reservar(@PathVariable("pistaId") UUID pistaId, @RequestBody ReservarRequest peticion) {
@@ -44,12 +53,17 @@ class ReservaController {
                 new Franxa(peticion.inicio().toInstant(), peticion.fin().toInstant()));
         ReservaCreada cuerpo = new ReservaCreada(
                 resultado.reserva().id().value(),
-                peticion.inicio(),
-                peticion.fin(),
+                utc(resultado.reserva().franxa().inicio()),
+                utc(resultado.reserva().franxa().fin()),
                 "confirmada",
                 resultado.token().valor());
         // El token solo viaja aquí: la respuesta no debe cachearse.
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore()).body(cuerpo);
+    }
+
+    /** La respuesta refleja la franxa persistida (normalizada a microsegundos), no lo que envió el cliente. */
+    private static OffsetDateTime utc(Instant instante) {
+        return OffsetDateTime.ofInstant(instante, ZoneOffset.UTC);
     }
 
     @PostMapping("/api/reservas/{id}/cancelar")

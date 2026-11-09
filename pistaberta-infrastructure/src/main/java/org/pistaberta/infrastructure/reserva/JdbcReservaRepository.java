@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.pistaberta.application.reserva.ReservaRepository;
 import org.pistaberta.domain.reserva.EstadoReserva;
 import org.pistaberta.domain.reserva.Franxa;
+import org.pistaberta.domain.reserva.FranxaInvalida;
 import org.pistaberta.domain.reserva.PistaId;
 import org.pistaberta.domain.reserva.PistaNonExiste;
 import org.pistaberta.domain.reserva.Reserva;
@@ -32,6 +33,13 @@ public class JdbcReservaRepository implements ReservaRepository {
     static final String CONSTRAINT_PISTA = "reserva_pista_fk";
     private static final String EXCLUSION_VIOLATION = "23P01";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
+    /**
+     * Rango de franxas que acepta la persistencia. Hace falta una guarda explícita: el driver convierte en silencio las
+     * fechas muy anteriores en {@code -infinity} (se guardaría una reserva ilimitada por el pasado) y Postgres rechaza
+     * las posteriores al año 294276 con un error crudo. Los límites quedan lejos de ambos y son los años ISO de 4 dígitos.
+     */
+    static final Instant FRANXA_MIN = Instant.parse("1900-01-01T00:00:00Z");
+    static final Instant FRANXA_MAX = Instant.parse("9999-12-31T23:59:59Z");
 
     private static final RowMapper<Reserva> MAPPER = (rs, i) -> Reserva.reconstruir(
             new ReservaId(rs.getObject("id", UUID.class)),
@@ -48,6 +56,7 @@ public class JdbcReservaRepository implements ReservaRepository {
 
     @Override
     public List<Reserva> activasSolapadas(PistaId pista, Franxa franxa) {
+        comprobarRango(franxa);
         return jdbc.query("""
                 select tenant_id, id, pista_id, inicio, fin, estado
                 from reserva
@@ -60,6 +69,7 @@ public class JdbcReservaRepository implements ReservaRepository {
 
     @Override
     public void gardar(Reserva reserva) {
+        comprobarRango(reserva.franxa());
         try {
             jdbc.insert("reserva", Map.of(
                     "id", reserva.id().value(),
@@ -85,6 +95,12 @@ public class JdbcReservaRepository implements ReservaRepository {
                     Map.of("id", reserva.id().value()));
         } catch (DataAccessException e) {
             throw traducir(e, reserva);
+        }
+    }
+
+    private static void comprobarRango(Franxa franxa) {
+        if (franxa.inicio().isBefore(FRANXA_MIN) || franxa.fin().isAfter(FRANXA_MAX)) {
+            throw new FranxaInvalida("A franxa debe estar entre " + FRANXA_MIN + " e " + FRANXA_MAX);
         }
     }
 
