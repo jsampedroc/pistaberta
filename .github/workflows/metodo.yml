@@ -21,4 +21,4 @@ jobs:
       # AJUSTA: true (por defecto) bloquea el merge ante una violación. false = la informa y sale
       # en verde, para adoptar el gate en un repo que aún no cumple; vuelve a true cuando cumpla.
       fail_on_violations: true
-      runner: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}   # mismo criterio que ci.yml (runner self-hosted)
+      runner: pistaberta   # etiqueta del runner self-hosted de este repo (como en ci.yml, CI_RUNNER=pistaberta)
