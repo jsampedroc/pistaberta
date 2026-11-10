@@ -14,7 +14,7 @@ Rama de integración: `main`
 Reglas globales en `~/.claude/CLAUDE.md`; el porqué, en dev-knowledge/claude-code/metodo.md.
 - Base: `main`. PRs independientes desde base limpia; un worktree por sesión con `git worktree add -b <rama> ../pistaberta-<nombre> origin/main` (este repo no necesita `scripts/worktree.sh`: no hay ficheros fuera de git que copiar, las credenciales de `dev` van en `docker-compose.yml` y `application-dev.yml`).
 - Decisiones: `docs/decisiones.md`. Solo se implementa lo ACEPTADO; se apunta en el mismo PR.
-- Origen en cada PR (issue / D-xxx / invariante). Plantilla en `.github/pull_request_template.md`; el gate `.github/workflows/metodo.yml` (ci-shared) exige la línea `Origen:`.
+- Origen en cada PR (issue / D-xxx / invariante). Plantilla en `.github/pull_request_template.md`. El gate `metodo.yml` de ci-shared no corre aquí (repo público, ci-shared privado; ver #21): hasta resolverlo, la línea `Origen:` y la marca de este fichero se comprueban con `scripts/metodo-check.sh` de ci-shared.
 - Local antes de PR: `mvn -B verify` (compila, comprueba `maven-enforcer` y ejecuta los tests; no hay paso de typecheck aparte: el compilador de Maven lo cubre).
 - Mutaciones: a mano, restaurando el código tras cada una y siempre con `mvn clean verify`; aisladas, una regla por mutación (listas por tier en las secciones de abajo). No hay herramienta de mutación automática.
 - Keywords de cierre solo en cuerpo del PR y última línea del squash.
